@@ -5719,32 +5719,12 @@ async function fetchLiveStatus() {
   ts.textContent = 'Fetching…';
 
   // Build display from static OUTAGE_WATCH + attempt Eskom live fetch
+  // Note: Eskom API has CORS restrictions — fetch will be blocked in browser context; use static fallback
   let eskomStage = null;
-  try {
-    const r = await fetch('https://loadshedding.eskom.co.za/LoadShedding/GetStatus', { signal: AbortSignal.timeout(4000) });
-    if (r.ok) {
-      const val = parseInt(await r.text());
-      eskomStage = val > 1 ? val - 1 : 0;   // API returns stage+1; 1 = no shedding
-    }
-  } catch(_) { /* CORS or network fail — use static data */ }
+  // Eskom CORS-blocked in browser — skip live fetch, use static fallback only
 
-  // Also try IODA for country-level internet outage alerts (proxy for major power outages)
+  // IODA alerts disabled (api.ioda.caida.org unreliable/deprecated)
   let iodaAlerts = {};
-  try {
-    const iodaResp = await fetch(
-      'https://api.ioda.caida.org/v2/alerts?from=-7200&until=0&human=true',
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (iodaResp.ok) {
-      const iodaData = await iodaResp.json();
-      (iodaData.data || []).forEach(alert => {
-        if (alert.entity?.type === 'country') {
-          const code = alert.entity.code;
-          if (!iodaAlerts[code]) iodaAlerts[code] = { level: alert.level, name: alert.entity.name };
-        }
-      });
-    }
-  } catch(_) { /* IODA unavailable */ }
 
   // Render rows
   let html = '';
