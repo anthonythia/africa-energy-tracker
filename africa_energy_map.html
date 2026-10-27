@@ -1199,6 +1199,16 @@
 .fiche-mix-dot { display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px; }
 .fiche-source { font-size:9px;color:#334155;margin-top:16px;padding-top:8px;border-top:1px solid #1e3a5f; }
 
+/* ── SPARKLINE IPP ── */
+.fiche-spark-wrap { margin-top:10px; }
+.fiche-spark-title { font-size:10px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px; }
+.fiche-spark-svg { width:100%;height:80px;display:block; }
+.fiche-spark-bar { fill:#38bdf8;opacity:0.75;transition:opacity 0.15s; }
+.fiche-spark-bar:hover { opacity:1; }
+.fiche-spark-label { font-size:9px;fill:#64748b;text-anchor:middle; }
+.fiche-spark-val { font-size:8px;fill:#94a3b8;text-anchor:middle; }
+.fiche-spark-total { font-size:11px;color:#64b5f6;font-weight:700;margin-top:4px; }
+
 /* ── COMPARATEUR PAYS ── */
 #comp-overlay {
   display:none; position:fixed; inset:0; z-index:1100;
@@ -7026,6 +7036,68 @@ function openCountryFiche(name) {
       ${kps[0]?.note ? `<p style="font-size:10px;color:#94a3b8;margin-top:6px">${kps[0].note}</p>` : ''}
     </div>` : '';
 
+  // ── Sparkline : évolution capacité IPP par année ──
+  const sparklineSection = (() => {
+    if (!ipps.length) return '';
+    // Aggregate MW by commission year
+    const byYear = {};
+    ipps.forEach(p => {
+      if (!p.commissionYear) return;
+      byYear[p.commissionYear] = (byYear[p.commissionYear] || 0) + (p.capacityMW || 0);
+    });
+    const years = Object.keys(byYear).map(Number).sort((a,b)=>a-b);
+    if (years.length < 2) return '';
+
+    // Cumulative
+    let cum = 0;
+    const cumByYear = years.map(y => { cum += byYear[y]; return { y, mw: byYear[y], cum }; });
+    const maxCum = cum;
+    const totalGW = (maxCum / 1000).toFixed(1);
+
+    // SVG dimensions
+    const W = 400, H = 70, PAD = { l:4, r:4, t:8, b:20 };
+    const plotW = W - PAD.l - PAD.r;
+    const plotH = H - PAD.t - PAD.b;
+    const bw = Math.max(2, Math.floor(plotW / years.length) - 2);
+    const xStep = plotW / years.length;
+
+    const bars = cumByYear.map((d, i) => {
+      const x = PAD.l + i * xStep + (xStep - bw) / 2;
+      const barH = Math.max(2, (d.cum / maxCum) * plotH);
+      const y = PAD.t + plotH - barH;
+      const mwLabel = d.mw >= 1000 ? (d.mw/1000).toFixed(1)+'GW' : d.mw+'MW';
+      return `
+        <rect class="fiche-spark-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${barH.toFixed(1)}">
+          <title>${d.y} : +${mwLabel} (cumulé ${(d.cum/1000).toFixed(1)} GW)</title>
+        </rect>
+        <text class="fiche-spark-label" x="${(x + bw/2).toFixed(1)}" y="${(PAD.t + plotH + 12).toFixed(1)}">${d.y}</text>`;
+    }).join('');
+
+    // Cumulative line
+    const linePoints = cumByYear.map((d, i) => {
+      const cx = PAD.l + i * xStep + xStep / 2;
+      const cy = PAD.t + plotH - (d.cum / maxCum) * plotH;
+      return `${cx.toFixed(1)},${cy.toFixed(1)}`;
+    }).join(' ');
+
+    return `
+    <div class="fiche-section">
+      <div class="fiche-section-title">📊 Évolution capacité IPP — ${years[0]}–${years[years.length-1]}</div>
+      <div class="fiche-spark-wrap">
+        <svg class="fiche-spark-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+          ${bars}
+          <polyline points="${linePoints}" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linejoin="round" opacity="0.8"/>
+          ${cumByYear.map((d,i) => {
+            const cx = PAD.l + i * xStep + xStep/2;
+            const cy = PAD.t + plotH - (d.cum/maxCum)*plotH;
+            return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.5" fill="#f59e0b"/>`;
+          }).join('')}
+        </svg>
+        <div class="fiche-spark-total">${ipps.length} projets · <strong>${totalGW} GW</strong> cumulés · ${years[0]}–${years[years.length-1]}</div>
+      </div>
+    </div>`;
+  })();
+
   const ippSection = ipp10.length ? `
     <div class="fiche-section">
       <div class="fiche-section-title">🏗 Projets IPP majeurs (${ipps.length} recensés)</div>
@@ -7066,6 +7138,8 @@ function openCountryFiche(name) {
           <div class="fiche-mix-bar">${mixBar}</div>
           <div class="fiche-mix-legend">${mixLegend}</div>` : '<p style="color:#64748b;font-size:12px">Données de mix non disponibles.</p>'}
       </div>
+
+      ${sparklineSection}
 
       <div class="fiche-section">
         <div class="fiche-section-title">📈 Indicateurs clés</div>
